@@ -101,13 +101,17 @@ def notify(title, message, priority="default", click=None, actions=None, tags=No
     if not NTFY_TOPIC:
         log(f"DRY-RUN notify: [{title}] {message}")
         return
-    headers = {"Title": title, "Priority": priority}
+    # HTTP headers are latin-1 only; the message body stays full UTF-8.
+    def h(value):
+        return value.encode("latin-1", "replace").decode("latin-1")
+
+    headers = {"Title": h(title), "Priority": priority}
     if click:
-        headers["Click"] = click
+        headers["Click"] = h(click)
     if actions:
-        headers["Actions"] = "; ".join(actions)
+        headers["Actions"] = h("; ".join(actions))
     if tags:
-        headers["Tags"] = tags
+        headers["Tags"] = h(tags)
     req = urllib.request.Request(
         f"{NTFY_SERVER}/{NTFY_TOPIC}",
         data=message.encode(),

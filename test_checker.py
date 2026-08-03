@@ -133,6 +133,34 @@ class TestRealPages(unittest.TestCase):
         self.assertEqual(status, NOT_ON_SALE)
 
 
+class TestNotifyHeaders(unittest.TestCase):
+    def test_non_latin1_title_does_not_crash(self):
+        # Em dashes etc. in titles must be sanitized (HTTP headers are latin-1).
+        sent = {}
+
+        def fake_urlopen(req, timeout=15):
+            # Reproduce http.client's strictness before "responding".
+            for k, v in req.headers.items():
+                v.encode("latin-1")
+            sent["title"] = req.headers.get("Title")
+
+            class R:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+            return R()
+
+        with mock.patch.object(checker, "NTFY_TOPIC", "test-topic"), \
+             mock.patch.object(checker.urllib.request, "urlopen", fake_urlopen):
+            checker.notify("Ticket page changed — f1_store", "détail ✓", click=None)
+        self.assertIn("Ticket page changed", sent["title"])
+
+
 class TestStateMachine(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
