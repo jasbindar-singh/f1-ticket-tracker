@@ -1,0 +1,36 @@
+name: F1 Malaysia ticket check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ticket-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run checker
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 checker.py
+
+      - name: Commit state
+        run: |
+          git config user.name "ticket-tracker-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "state: $(date -u +%FT%TZ)"
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            git push
+          fi
