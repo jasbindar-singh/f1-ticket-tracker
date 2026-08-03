@@ -161,6 +161,32 @@ class TestNotifyHeaders(unittest.TestCase):
         self.assertIn("Ticket page changed", sent["title"])
 
 
+    def test_notify_retries_on_transient_failure(self):
+        calls = {"n": 0}
+
+        def flaky_urlopen(req, timeout=15):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise checker.urllib.error.URLError("429 rate limited")
+
+            class R:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+            return R()
+
+        with mock.patch.object(checker, "NTFY_TOPIC", "test-topic"), \
+             mock.patch.object(checker.time, "sleep"), \
+             mock.patch.object(checker.urllib.request, "urlopen", flaky_urlopen):
+            checker.notify("title", "message")
+        self.assertEqual(calls["n"], 3)
+
+
 class TestStateMachine(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

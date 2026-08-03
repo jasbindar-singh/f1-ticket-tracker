@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -118,11 +119,17 @@ def notify(title, message, priority="default", click=None, actions=None, tags=No
         headers=headers,
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            log(f"notified ({resp.status}): [{title}] {message}")
-    except (urllib.error.URLError, OSError) as e:
-        log(f"ERROR sending notification: {e}")
+    # Retry: losing the one alert that matters to a transient ntfy hiccup or
+    # rate-limit (429) would defeat the whole tracker.
+    for attempt, delay in enumerate((0, 5, 15, 30), start=1):
+        time.sleep(delay)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                log(f"notified ({resp.status}): [{title}] {message}")
+                return
+        except (urllib.error.URLError, OSError) as e:
+            log(f"ERROR sending notification (attempt {attempt}): {e}")
+    log(f"GIVING UP on notification: [{title}] {message}")
 
 
 def load_state():
