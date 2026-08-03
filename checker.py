@@ -147,6 +147,24 @@ def save_state(state):
         f.write("\n")
 
 
+def cooldown_ok(src, key, hours=24):
+    """True if this alert type hasn't fired for this source within `hours`.
+
+    Damps flapping (e.g. an A/B-tested redesign oscillating SHAPE_CHANGED <->
+    NOT_ON_SALE, or fail/recover cycles) to at most one push per day per type.
+    Never applied to the ON_SALE alert itself.
+    """
+    last = src.setdefault("last_alerts", {}).get(key)
+    now = datetime.now(timezone.utc)
+    if last:
+        age = (now - datetime.fromisoformat(last)).total_seconds()
+        if age < hours * 3600:
+            log(f"suppressing repeat '{key}' alert (last sent {age/3600:.1f}h ago)")
+            return False
+    src["last_alerts"][key] = now.isoformat(timespec="seconds")
+    return True
+
+
 def on_sale_alert(source_name, detail, url):
     notify(
         title=f"F1 MALAYSIA TICKETS ON SALE — {source_name}",
@@ -179,7 +197,11 @@ def run_source(state, name, checker, url_label):
     except Exception as e:
         src["fails"] += 1
         log(f"{name}: fetch/check FAILED ({src['fails']}x): {e}")
-        if src["fails"] >= FAIL_THRESHOLD and not src["alerted_blind"]:
+        if (
+            src["fails"] >= FAIL_THRESHOLD
+            and not src["alerted_blind"]
+            and cooldown_ok(src, "blind")
+        ):
             notify(
                 title=f"Tracker is BLIND on {name}",
                 message=(
@@ -195,7 +217,7 @@ def run_source(state, name, checker, url_label):
 
     if src["fails"]:
         log(f"{name}: recovered after {src['fails']} failures")
-        if src["alerted_blind"]:
+        if src["alerted_blind"] and cooldown_ok(src, "recovered"):
             notify(
                 title=f"Tracker recovered on {name}",
                 message="Checks are working again.",
@@ -217,7 +239,7 @@ def run_source(state, name, checker, url_label):
     src["status"] = status
     if status == ON_SALE:
         on_sale_alert(name, detail, url_label)
-    elif status == SHAPE_CHANGED:
+    elif status == SHAPE_CHANGED and cooldown_ok(src, "shape_changed"):
         notify(
             title=f"Ticket page changed — {name}",
             message=(

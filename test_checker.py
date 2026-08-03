@@ -265,6 +265,47 @@ class TestStateMachine(unittest.TestCase):
         on_sale = [n for n in self.notifications if "ON SALE" in n[0]]
         self.assertEqual(len(on_sale), 1)
 
+    def test_flapping_shape_change_alerts_once_per_day(self):
+        # Page oscillates (e.g. A/B-tested redesign): NOT <-> SHAPE_CHANGED.
+        for _ in range(5):
+            self.run_with_pages(F1_SHAPE_CHANGED, SEPANG_NOT_ON_SALE)
+            self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        changed = [n for n in self.notifications if "changed" in n[0]]
+        self.assertEqual(len(changed), 1)
+
+    def test_flapping_blind_recover_cycles_alert_once_per_day(self):
+        for _ in range(3):  # fail past threshold, recover, repeat
+            for _ in range(checker.FAIL_THRESHOLD):
+                self.run_with_pages(error=RuntimeError("HTTP 403"))
+            self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        blind = [n for n in self.notifications if "BLIND" in n[0]]
+        recovered = [n for n in self.notifications if "recovered" in n[0]]
+        self.assertEqual(len(blind), 2)  # one per source, once per day
+        self.assertEqual(len(recovered), 2)
+
+    def test_expired_cooldown_re_arms_alerts(self):
+        self.run_with_pages(F1_SHAPE_CHANGED, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        # Age the recorded alert timestamp past 24h, then flap again.
+        with open(checker.STATE_FILE) as f:
+            state = json.load(f)
+        state["sources"]["f1_store"]["last_alerts"]["shape_changed"] = (
+            "2020-01-01T00:00:00+00:00"
+        )
+        with open(checker.STATE_FILE, "w") as f:
+            json.dump(state, f)
+        self.run_with_pages(F1_SHAPE_CHANGED, SEPANG_NOT_ON_SALE)
+        changed = [n for n in self.notifications if "changed" in n[0]]
+        self.assertEqual(len(changed), 2)
+
+    def test_on_sale_alert_is_never_cooldown_suppressed(self):
+        # Even mid-flap, a real ON_SALE transition must always push.
+        self.run_with_pages(F1_SHAPE_CHANGED, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_ON_SALE, SEPANG_NOT_ON_SALE)
+        on_sale = [n for n in self.notifications if "ON SALE" in n[0]]
+        self.assertEqual(len(on_sale), 1)
+
     def test_corrupt_state_file_recovers(self):
         with open(checker.STATE_FILE, "w") as f:
             f.write("{not json")
