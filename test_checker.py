@@ -191,6 +191,7 @@ class TestStateMachine(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         checker.STATE_FILE = os.path.join(self.tmp.name, "state.json")
+        checker.DEBUG_DIR = os.path.join(self.tmp.name, "debug")
         self.notifications = []
         self.notify_patch = mock.patch.object(
             checker,
@@ -305,6 +306,13 @@ class TestStateMachine(unittest.TestCase):
         self.run_with_pages(F1_ON_SALE, SEPANG_NOT_ON_SALE)
         on_sale = [n for n in self.notifications if "ON SALE" in n[0]]
         self.assertEqual(len(on_sale), 1)
+
+    def test_shape_change_saves_debug_snapshot(self):
+        self.run_with_pages(F1_SHAPE_CHANGED, SEPANG_NOT_ON_SALE)
+        path = os.path.join(checker.DEBUG_DIR, "f1_store_0.html")
+        self.assertTrue(os.path.exists(path))
+        with open(path) as f:
+            self.assertIn("redesigned", f.read())
 
     def test_corrupt_state_file_recovers(self):
         with open(checker.STATE_FILE, "w") as f:

@@ -24,6 +24,15 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python3 checker.py
 
+      - name: Upload unrecognized-page snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-pages-${{ github.run_id }}
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Commit state
         run: |
           git config user.name "ticket-tracker-bot"

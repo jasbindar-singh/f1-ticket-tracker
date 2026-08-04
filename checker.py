@@ -37,6 +37,7 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
 )
 STATE_FILE = os.environ.get("STATE_FILE", "state.json")
+DEBUG_DIR = os.environ.get("DEBUG_DIR", "debug")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh")
 # 4 consecutive failures at 15-min cadence ≈ 1 hour blind.
@@ -185,15 +186,24 @@ def run_source(state, name, checker, url_label):
         name, {"status": NOT_ON_SALE, "fails": 0, "alerted_blind": False}
     )
     try:
-        if name == "f1_store":
-            status, detail = checker(fetch(F1_URL))
-        else:
-            statuses = [checker(fetch(u)) for u in SEPANG_URLS]
-            # ON_SALE on any page wins; then SHAPE_CHANGED; else NOT_ON_SALE.
-            status, detail = max(
-                statuses,
-                key=lambda s: {ON_SALE: 2, SHAPE_CHANGED: 1, NOT_ON_SALE: 0}[s[0]],
-            )
+        urls = [F1_URL] if name == "f1_store" else SEPANG_URLS
+        pages = [(u, fetch(u)) for u in urls]
+        statuses = [checker(h) for _, h in pages]
+        # ON_SALE on any page wins; then SHAPE_CHANGED; else NOT_ON_SALE.
+        status, detail = max(
+            statuses,
+            key=lambda s: {ON_SALE: 2, SHAPE_CHANGED: 1, NOT_ON_SALE: 0}[s[0]],
+        )
+        if status == SHAPE_CHANGED:
+            # Preserve what we actually saw for post-mortem (uploaded as a
+            # workflow artifact; never committed).
+            os.makedirs(DEBUG_DIR, exist_ok=True)
+            for i, (u, h) in enumerate(pages):
+                path = os.path.join(DEBUG_DIR, f"{name}_{i}.html")
+                with open(path, "w") as f:
+                    f.write(f"<!-- {u} fetched {datetime.now(timezone.utc)} -->\n")
+                    f.write(h)
+                log(f"{name}: saved unrecognized page to {path}")
     except Exception as e:
         src["fails"] += 1
         log(f"{name}: fetch/check FAILED ({src['fails']}x): {e}")
