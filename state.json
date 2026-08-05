@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-08-05T11:01:23+00:00",
+  "last_run": "2026-08-05T11:15:52+00:00",
   "sources": {
     "f1_store": {
       "alerted_blind": false,
@@ -7,7 +7,7 @@
       "last_alerts": {
         "shape_changed": "2026-08-04T12:15:48+00:00"
       },
-      "status": "SHAPE_CHANGED"
+      "status": "NOT_ON_SALE"
     },
     "sepang": {
       "alerted_blind": false,
