@@ -34,6 +34,15 @@ F1_ON_SALE = (
 
 F1_SHAPE_CHANGED = "<html><body>Welcome to a totally redesigned page</body></html>"
 
+# Mirrors the real Queue-Fair waiting room served on 2026-08-05 (title
+# "Platinium Group - f1", assets from files.queue-fair.net).
+F1_QUEUE_PAGE = (
+    "<html><head><title>Platinium Group - f1</title></head><body>"
+    "You are now in a Waiting Room. "
+    '<img src="https://files.queue-fair.net/platiniumgroup/banner.png">'
+    "</body></html>"
+)
+
 SEPANG_NOT_ON_SALE = (
     '<html><style>#html-body [data-pb-style=VF1W8E2]{display:flex}</style>'
     '<a href="/events/petronas-grand-prix-of-malaysia-2026-overview">'
@@ -77,6 +86,10 @@ class TestF1Detector(unittest.TestCase):
     def test_shape_changed(self):
         status, _ = checker.check_f1_store(F1_SHAPE_CHANGED)
         self.assertEqual(status, SHAPE_CHANGED)
+
+    def test_queue_page_detected_as_queue_not_shape_change(self):
+        status, detail = checker.check_f1_store(F1_QUEUE_PAGE)
+        self.assertEqual(status, checker.QUEUE)
 
     def test_event_name_mentions_do_not_trigger(self):
         # "bahrain" appears 36x on the real page — must NOT trigger this detector.
@@ -303,6 +316,33 @@ class TestStateMachine(unittest.TestCase):
         # Even mid-flap, a real ON_SALE transition must always push.
         self.run_with_pages(F1_SHAPE_CHANGED, SEPANG_NOT_ON_SALE)
         self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_ON_SALE, SEPANG_NOT_ON_SALE)
+        on_sale = [n for n in self.notifications if "ON SALE" in n[0]]
+        self.assertEqual(len(on_sale), 1)
+
+    def test_single_queue_blip_is_silent(self):
+        self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_QUEUE_PAGE, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        self.assertEqual(self.notifications, [])
+
+    def test_persistent_queue_alerts_exactly_once(self):
+        self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        for _ in range(4):
+            self.run_with_pages(F1_QUEUE_PAGE, SEPANG_NOT_ON_SALE)
+        queue = [n for n in self.notifications if "Waiting room" in n[0]]
+        self.assertEqual(len(queue), 1)
+
+    def test_queue_streak_resets_on_normal_page(self):
+        # queue, normal, queue, normal ... never 2 consecutive -> silent
+        for _ in range(3):
+            self.run_with_pages(F1_QUEUE_PAGE, SEPANG_NOT_ON_SALE)
+            self.run_with_pages(F1_NOT_ON_SALE, SEPANG_NOT_ON_SALE)
+        self.assertEqual(self.notifications, [])
+
+    def test_on_sale_after_queue_clears_still_alerts(self):
+        self.run_with_pages(F1_QUEUE_PAGE, SEPANG_NOT_ON_SALE)
+        self.run_with_pages(F1_QUEUE_PAGE, SEPANG_NOT_ON_SALE)
         self.run_with_pages(F1_ON_SALE, SEPANG_NOT_ON_SALE)
         on_sale = [n for n in self.notifications if "ON SALE" in n[0]]
         self.assertEqual(len(on_sale), 1)

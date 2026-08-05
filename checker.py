@@ -46,6 +46,11 @@ FAIL_THRESHOLD = int(os.environ.get("FAIL_THRESHOLD", "4"))
 ON_SALE = "ON_SALE"
 NOT_ON_SALE = "NOT_ON_SALE"
 SHAPE_CHANGED = "SHAPE_CHANGED"
+QUEUE = "QUEUE"
+
+# Markers of the store's Queue-Fair waiting room (observed 2026-08-05: title
+# "Platinium Group - f1", assets from files.queue-fair.net).
+QUEUE_MARKERS = re.compile(r"queue-fair\.net|queue-it\.net|Waiting Room|BREAK YOUR QUEUE", re.I)
 
 
 def log(msg):
@@ -72,6 +77,8 @@ def check_f1_store(html):
             f"{populated_prices} populated price categories"
         )
     if any_products_key == 0:
+        if QUEUE_MARKERS.search(html):
+            return QUEUE, "store is serving its waiting-room page"
         return SHAPE_CHANGED, "embedded ticket JSON missing — page structure changed"
     return NOT_ON_SALE, f"{any_products_key} product arrays, all empty"
 
@@ -192,7 +199,9 @@ def run_source(state, name, checker, url_label):
         # ON_SALE on any page wins; then SHAPE_CHANGED; else NOT_ON_SALE.
         status, detail = max(
             statuses,
-            key=lambda s: {ON_SALE: 2, SHAPE_CHANGED: 1, NOT_ON_SALE: 0}[s[0]],
+            key=lambda s: {ON_SALE: 3, SHAPE_CHANGED: 2, QUEUE: 1, NOT_ON_SALE: 0}[
+                s[0]
+            ],
         )
         if status == SHAPE_CHANGED:
             # Preserve what we actually saw for post-mortem (uploaded as a
@@ -239,6 +248,26 @@ def run_source(state, name, checker, url_label):
 
     prev = src["status"]
     log(f"{name}: {status} ({detail})")
+
+    # Queue pages: a single sighting is routine (another race's on-sale spiking
+    # the store); a persistent queue is what the Malaysia launch itself would
+    # look like if the real page is hidden behind the waiting room.
+    if status == QUEUE:
+        src["queue_streak"] = src.get("queue_streak", 0) + 1
+        if src["queue_streak"] == 2 and cooldown_ok(src, "queue"):
+            notify(
+                title=f"Waiting room active 30+ min — {name}",
+                message=(
+                    "The official store has kept a queue up for 2+ consecutive "
+                    "checks. An on-sale may be in progress (possibly Malaysia) — "
+                    "check manually."
+                ),
+                priority="high",
+                click=url_label,
+                tags="hourglass",
+            )
+        return
+    src["queue_streak"] = 0
 
     if status == prev:
         return

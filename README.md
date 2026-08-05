@@ -77,6 +77,11 @@ Per-source states: `NOT_ON_SALE → ON_SALE | SHAPE_CHANGED | (fetch errors)`.
   is therefore never ambiguous: no news really is no news.
 - Notification sends are retried 4× with backoff so a transient ntfy hiccup
   can't eat the one alert that matters.
+- Queue-aware: the store's Queue-Fair waiting room (seen 2026-08-04/05,
+  served store-wide during other races' on-sales) is recognized as its own
+  state. One queue sighting is silent; a queue persisting 2+ consecutive
+  checks (30+ min) pushes a "waiting room active" alert, since that is what
+  the Malaysia launch would look like from behind the queue.
 - Flap damping: `SHAPE_CHANGED`, blind and recovery alerts are rate-limited
   to **one per 24h per source**, so an oscillating page (A/B tests, flaky
   blocking) can't ping you repeatedly. The cooldown never applies to the
@@ -114,7 +119,7 @@ on tap, and carries action buttons for both stores.
 ## Local development
 
 ```bash
-python3 test_checker.py   # 27 tests: detectors (incl. real-page fixtures),
+python3 test_checker.py   # 33 tests: detectors (incl. real-page fixtures),
                           # state machine, alert dedup, failure/recovery paths
 python3 checker.py        # one live check; without NTFY_TOPIC set it only logs
 ```
