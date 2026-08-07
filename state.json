@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-08-07T01:01:13+00:00",
+  "last_run": "2026-08-07T01:15:45+00:00",
   "sources": {
     "f1_store": {
       "alerted_blind": false,
@@ -8,7 +8,7 @@
         "queue": "2026-08-07T01:01:11+00:00",
         "shape_changed": "2026-08-05T14:15:54+00:00"
       },
-      "queue_streak": 2,
+      "queue_streak": 0,
       "status": "NOT_ON_SALE"
     },
     "sepang": {
